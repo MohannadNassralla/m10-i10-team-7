@@ -1,97 +1,75 @@
-import { useState } from "react";
-import type { KGResponse, UnsupportedQueryDetail } from "../lib/types";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { useState } from 'react';
+import { KgQueryResult } from '../lib/types';
 
 export default function KgPage() {
-  const [question, setQuestion] = useState("");
-  const [result, setResult] = useState<KGResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [supported, setSupported] = useState<string[] | null>(null);
+  const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
+  const [data, setData] = useState<KgQueryResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  async function submit() {
+  const handleQuery = async (e: React.FormEvent) => {
+    e.preventDefault();
     setLoading(true);
     setError(null);
-    setSupported(null);
-    setResult(null);
+
     try {
-      const r = await fetch(`${API_URL}/kg/query`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question }),
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${apiUrl}/kg/query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query }),
       });
-      if (r.status === 422) {
-        const body = await r.json();
-        const detail = body.detail as UnsupportedQueryDetail | undefined;
-        if (detail?.reason === "unsupported_question") {
-          setError("That question shape is not supported. Try one of:");
-          setSupported(detail.supported_patterns);
-        } else {
-          setError("Validation rejected the request.");
-        }
-        return;
-      }
-      if (r.status === 503) {
-        setError("Backend not ready. Try again in a moment.");
-        return;
-      }
-      if (!r.ok) {
-        setError(`Unexpected status: ${r.status}`);
-        return;
-      }
-      setResult((await r.json()) as KGResponse);
-    } catch (e) {
-      setError("Network error reaching the backend.");
+
+      if (response.status === 422) throw new Error('Unprocessable Query Target (422).');
+      if (response.status === 503) throw new Error('Database Stack Unreachable (503).');
+      if (!response.ok) throw new Error(`Graph Execution Fail: ${response.status}`);
+
+      const result: KgQueryResult = await response.json();
+      setData(result);
+    } catch (err: any) {
+      setError(err.message);
     } finally {
       setLoading(false);
     }
-  }
+  };
 
   return (
-    <main>
-      <h1>Knowledge Graph — Recipe Query</h1>
-      <input
-        value={question}
-        onChange={(e) => setQuestion(e.target.value)}
-        placeholder="e.g. Find Sichuan recipes"
-        size={60}
-      />
-      <button onClick={submit} disabled={loading || !question}>
-        {loading ? "Querying..." : "Ask"}
-      </button>
-      {error && (
-        <p role="alert" data-testid="error">
-          {error}
-        </p>
-      )}
-      {supported && (
-        <ul data-testid="supported-patterns">
-          {supported.map((p, i) => (
-            <li key={i}>{p}</li>
-          ))}
-        </ul>
-      )}
-      {result && (
-        <section>
-          <h2>Cypher</h2>
-          <pre>{result.cypher}</pre>
-          <h2>Rows ({result.count})</h2>
-          <table>
-            <tbody>
-              {result.rows.map((row, i) => (
-                <tr key={i} data-testid="kg-row">
-                  {Object.entries(row).map(([k, v]) => (
-                    <td key={k}>
-                      <strong>{k}:</strong> {String(v)}
-                    </td>
-                  ))}
-                </tr>
+    <div style={{ padding: '2rem', maxWidth: '800px', margin: '0 auto', fontFamily: 'system-ui' }}>
+      <h1>Knowledge Graph Explorer</h1>
+      <form onSubmit={handleQuery} style={{ display: 'flex', gap: '10px' }}>
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Enter Cypher or semantic lookup query..."
+          style={{ flex: 1, padding: '10px' }}
+        />
+        <button type="submit" disabled={loading}>Execute</button>
+      </form>
+
+      {error && <div style={{ color: 'red', marginTop: '10px' }}>{error}</div>}
+
+      {data && (
+        <div style={{ marginTop: '20px', display: 'flex', gap: '20px' }}>
+          <div style={{ flex: 1 }}>
+            <h4>Nodes Extracted ({data.nodes.length})</h4>
+            <ul>
+              {data.nodes.map((n) => (
+                <li key={n.id}><strong>{n.label}</strong> (ID: {n.id})</li>
               ))}
-            </tbody>
-          </table>
-        </section>
+            </ul>
+          </div>
+          <div style={{ flex: 1 }}>
+            <h4>Discovered Edges ({data.edges.length})</h4>
+            <ul>
+              {data.edges.map((e, idx) => (
+                <li key={idx}>`{e.source}` &rarr; <strong>{e.type}</strong> &rarr; `{e.target}`</li>
+              ))}
+            </ul>
+          </div>
+        </div>
       )}
-    </main>
+    </div>
   );
 }

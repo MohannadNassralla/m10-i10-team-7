@@ -5,11 +5,18 @@
 # included in lockfiles generated on macOS / Debian hosts.
 FROM node:20-slim AS builder
 WORKDIR /app
+
+# Optimize layer caching: copy lockfiles first so npm ci is cached
 COPY package*.json ./
 RUN npm ci
+
+# Copy the remaining client source files
 COPY . .
+
+# Set up the required host-facing Next.js API build argument
 ARG NEXT_PUBLIC_API_URL=http://localhost:8000
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+
 # Raise Node heap so the Next.js build's parallel worker does not OOM on
 # Docker Desktop's default 2GB VM allocation (Jest worker exits with
 # `WorkerError: encountered 1 child process exceptions`).
@@ -20,10 +27,15 @@ RUN npm run build
 FROM node:20-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+
 COPY package*.json ./
-RUN npm ci --omit=dev
+
+RUN npm install --omit=dev --legacy-peer-deps
+
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/next.config.js ./next.config.js
+
 EXPOSE 3000
+
 CMD ["npm", "start"]

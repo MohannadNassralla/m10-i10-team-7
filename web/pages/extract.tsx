@@ -1,72 +1,82 @@
-import { useState } from "react";
-import type { ExtractResponse } from "../lib/types";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// web/pages/extract.tsx
+import { useState } from 'react';
+import { ExtractResponse } from '../lib/types';
 
 export default function ExtractPage() {
-  const [text, setText] = useState("");
-  const [result, setResult] = useState<ExtractResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
+  const [data, setData] = useState<ExtractResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  async function submit() {
+  const handleExtract = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!text.trim()) return;
+
     setLoading(true);
     setError(null);
-    setResult(null);
+    setData(null);
+
     try {
-      const r = await fetch(`${API_URL}/extract`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${apiUrl}/extract`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text }),
       });
-      if (r.status === 422) {
-        setError("Text shape rejected by validation (empty or > 5000 chars).");
-        return;
-      }
-      if (r.status === 503) {
-        setError("Backend not ready. Try again in a moment.");
-        return;
-      }
-      if (!r.ok) {
-        setError(`Unexpected status: ${r.status}`);
-        return;
-      }
-      setResult((await r.json()) as ExtractResponse);
-    } catch (e) {
-      setError("Network error reaching the backend.");
+
+      if (response.status === 422) throw new Error('Invalid Schema/Payload (422).');
+      if (response.status === 503) throw new Error('Extraction Pipeline Down (503).');
+      if (!response.ok) throw new Error(`Server returned error status ${response.status}`);
+
+      const result: ExtractResponse = await response.json();
+      setData(result);
+    } catch (err: any) {
+      setError(err.message || 'Network connectivity broken.');
     } finally {
       setLoading(false);
     }
-  }
+  };
 
   return (
-    <main>
-      <h1>Extract — Named Entity Recognition</h1>
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        placeholder="Paste text to extract named entities from..."
-        rows={6}
-        cols={60}
-      />
-      <div>
-        <button onClick={submit} disabled={loading || !text}>
-          {loading ? "Extracting..." : "Extract"}
+    <div style={{ padding: '2rem', maxWidth: '800px', margin: '0 auto', fontFamily: 'system-ui' }}>
+      <h1>Entity Extraction Engine</h1>
+      <form onSubmit={handleExtract} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+        <textarea
+          rows={6}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Paste unstructured recipe text or documentation here..."
+          style={{ width: '100%', padding: '10px', fontSize: '1rem', borderRadius: '4px' }}
+          disabled={loading}
+        />
+        <button type="submit" style={{ padding: '10px 20px', alignSelf: 'flex-start' }} disabled={loading}>
+          {loading ? 'Processing Text...' : 'Extract Entities'}
         </button>
-      </div>
-      {error && <p role="alert" data-testid="error">{error}</p>}
-      {result && (
-        <section>
-          <h2>Entities</h2>
-          <ul>
-            {result.entities.map((e, i) => (
-              <li key={i} data-testid="entity-span">
-                <strong>{e.text}</strong> — {e.label} ({e.start}–{e.end})
-              </li>
-            ))}
-          </ul>
-        </section>
+      </form>
+
+      {error && <div style={{ color: 'red', marginTop: '15px' }}>{error}</div>}
+
+      {data && (
+        <div style={{ marginTop: '2rem' }}>
+          <h3>Extracted Entities</h3>
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '10px' }}>
+            <thead>
+              <tr style={{ backgroundColor: '#eee', textAlign: 'left' }}>
+                <th style={{ padding: '8px', border: '1px solid #ddd' }}>Entity Name</th>
+                <th style={{ padding: '8px', border: '1px solid #ddd' }}>Type Class</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.entities.map((ent, idx) => (
+                <tr key={idx}>
+                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{ent.name}</td>
+                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{ent.type}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
-    </main>
+    </div>
   );
 }
