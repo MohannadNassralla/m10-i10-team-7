@@ -1,13 +1,31 @@
-#!/usr/bin/env bash
-# Poll `docker compose ps` until all four services report healthy or
-# until the 90s budget expires.
-#
-# TODO (Infra-Integration lead): implement this script.
-# - Loop with 2s sleep, up to 45 iterations.
-# - Use `docker compose ps --format json` and check Health=="healthy"
-#   for api, web, neo4j, weaviate.
-# - Exit 0 on all healthy; exit 1 on timeout.
-
 set -euo pipefail
-echo "TODO: implement healthcheck_stack.sh"
+
+MAX=45
+SLEEP=2
+SERVICES="api web neo4j weaviate"
+
+for i in $(seq 1 $MAX); do
+    ALL_HEALTHY=true
+    for svc in $SERVICES; do
+        STATUS=$(docker compose ps --format json | python3 -c "
+import sys, json
+for line in sys.stdin:
+    s = json.loads(line)
+    if s.get('Service') == '$svc':
+        print(s.get('Health', 'unknown'))
+")
+        if [ "$STATUS" != "healthy" ]; then
+            ALL_HEALTHY=false
+        fi
+    done
+    if $ALL_HEALTHY; then
+        echo "All services healthy"
+        exit 0
+    fi
+    echo "Waiting... ($i/$MAX)"
+    sleep $SLEEP
+done
+
+echo "Timeout: not all services healthy"
+
 exit 1

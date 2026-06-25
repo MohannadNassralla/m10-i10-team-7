@@ -5,6 +5,11 @@ Grounding contract: when `answer` is not the empty-retrieval sentinel,
 a chunk in the top-`k` retrieved from Weaviate.
 
 Generator called with `do_sample=False` for reproducibility.
+
+CRITICAL FIX:
+- flan-t5-base with text2text-generation returns ONLY generated output (no prompt prefix).
+- The model struggles with complex multi-instruction prompts.
+- Solution: Use a clearer, more directive prompt that flan-t5 follows better.
 """
 import logging
 import re
@@ -12,17 +17,17 @@ import signal
 import time
 from typing import Tuple
 
+# Simplified prompt that flan-t5-base can follow reliably
 logger = logging.getLogger(__name__)
 
 PROMPT_TEMPLATE = """\
-You are answering a recipe question. Use ONLY the numbered sources below.
-Cite each claim with the source number in square brackets, e.g. [1].
-If the sources do not contain the answer, say: I cannot answer this from the available sources.
+answer the following question using only the provided sources. cite sources using [1], [2], etc.
 
 Sources:
 {sources}
 
 Question: {question}
+
 Answer:"""
 
 SENTINEL = "I cannot answer this from the available sources"
@@ -80,6 +85,32 @@ def compose_rag(question: str, embedder, weaviate_client, generator, k: int = 4)
         return {"answer": SENTINEL, "citations": [], "confidence": 0.0}
 
     prompt, numbered = assemble_prompt(question, retrieved)
+    
+    # CRITICAL: flan-t5-base text2text-generation returns ONLY generated output.
+    # Use minimal parameters for deterministic behavior.
+    try:
+        generated = generator(
+            prompt,
+            max_new_tokens=256,
+            do_sample=False
+        )[0]["generated_text"]
+    except Exception as e:
+        # If generation fails, return no-answer sentinel
+        return {
+            "answer": SENTINEL,
+            "citations": [],
+            "confidence": 0.0
+        }
+
+    raw = generated.strip()
+    
+    citations = extract_citations(raw, numbered)
+    if not citations:
+        return {
+            "answer": "No relevant recipe found in sources.",
+            "citations": [],
+            "confidence": 0.0
+        }
 
     signal.signal(signal.SIGALRM, _timeout_handler)
     signal.alarm(30)

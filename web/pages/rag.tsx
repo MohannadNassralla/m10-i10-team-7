@@ -1,4 +1,5 @@
 
+const API_URL = "/api";
 import { useState } from 'react';
 import { RagResponse } from '../lib/types';
 

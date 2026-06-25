@@ -6,6 +6,17 @@
 FROM node:20-slim AS builder
 WORKDIR /app
 
+# Configure npm with aggressive retry and timeout settings
+RUN npm config set fetch-timeout=180000 && \
+    npm config set fetch-retry-mintimeout=30000 && \
+    npm config set fetch-retry-maxtimeout=180000 && \
+    npm config set fetch-retries=10 && \
+    npm config set audit false && \
+    npm cache clean --force
+
+COPY package*.json ./
+RUN npm ci --verbose
+
 # Optimize layer caching: copy lockfiles first so npm ci is cached
 COPY package*.json ./
 RUN npm ci
@@ -28,6 +39,16 @@ FROM node:20-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
+# Configure npm with aggressive retry and timeout settings
+RUN npm config set fetch-timeout=180000 && \
+    npm config set fetch-retry-mintimeout=30000 && \
+    npm config set fetch-retry-maxtimeout=180000 && \
+    npm config set fetch-retries=10 && \
+    npm config set audit false && \
+    npm cache clean --force
+
+COPY package*.json ./
+RUN npm ci --omit=dev --verbose
 COPY package*.json ./
 
 RUN npm install --omit=dev --legacy-peer-deps
