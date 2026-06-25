@@ -1,71 +1,157 @@
 # Integration 10 — Dockerize the Four-Service Stack
 
-Compose the Lab's FastAPI backend and Next.js frontend with
-**containerized Neo4j and Weaviate** into a one-command Dockerized
-stack delivered as a 3-Team-Member team.
+Compose the Lab's FastAPI backend and Next.js frontend with **containerized Neo4j and Weaviate** into a one-command Docker Compose stack.
 
-> Read the full Integration guide on the cohort site:
-> <https://LevelUp-Applied-AI.github.io/aispire-14005-pages/modules/module-10/a0cae6a2>
->
-> Team-facing spec:
-> <https://LevelUp-Applied-AI.github.io/aispire-14005-pages/modules/module-10/4ba363ed>
+This project is a team-based integration assignment that demonstrates end-to-end system design using:
+- FastAPI backend (RAG + KG + Extract services)
+- Next.js frontend
+- Neo4j graph database
+- Weaviate vector database
 
-## Team Roles
+The system supports a full Retrieval-Augmented Generation (RAG) pipeline with citations and grounded answers.
 
-See [TEAM.md](TEAM.md) for role assignments and the per-role file
-checklist. See [CONTRIBUTING.md](CONTRIBUTING.md) for the internal-PR
-review convention and the contract-change protocol.
+---
 
-## Starter Layout
+## Team Members
+
+- **Rama Mathloni** — Infra-Integration Lead  
+- **Omar Al Akhras** — Backend Lead  
+- **Mohannad Nassrallah** — Frontend Lead  
+
+---
+
+##  Project Overview
+
+This system integrates four services into a unified AI-powered application:
+
+### Backend (FastAPI)
+- Handles `/extract`, `/kg/query`, `/rag/answer`
+- Connects to Neo4j and Weaviate
+- Implements RAG pipeline with citation support
+
+### Frontend (Next.js)
+- Provides UI for extract, knowledge graph, and RAG queries
+- Displays answers with citations
+- Communicates with backend API
+
+### Neo4j
+- Stores structured knowledge graph data
+- Seeded using Cypher scripts
+
+### Weaviate
+- Stores vector embeddings for semantic search
+- Seeded using embedding pipeline
+
+---
+
+## Project Structure
 
 ```
-api/                      Pre-implemented FastAPI backend (do not modify
-                          unless extending; the Backend lead extends here)
-web/                      Pre-implemented Next.js frontend
-docker-compose.yml        Skeleton — Infra-Integration lead authors
+api/                      Pre-implemented FastAPI backend (extended by Backend Lead)
+web/                      Pre-implemented Next.js frontend (extended by Frontend Lead)
+docker-compose.yml        Main orchestration file (Infra-Integration Lead)
 scripts/
-  seed_neo4j.sh           Stub — Infra-Integration lead authors
-  seed_weaviate.sh        Stub — Infra-Integration lead authors
-  healthcheck_stack.sh    Stub — Infra-Integration lead authors
-.env.example              Placeholder credentials
-TEAM.md                   Team roster — team fills in
-CONTRIBUTING.md           Branch convention + internal-PR protocol
+  seed_neo4j.sh           Seeds graph database
+  seed_weaviate.sh        Seeds vector database
+  healthcheck_stack.sh    Validates system readiness
+.env.example              Environment variables template
+TEAM.md                   Team roles and ownership
+CONTRIBUTING.md           Collaboration and branching rules
 ```
 
-## Bring up the stack (runbook — Infra-Integration lead drafts this)
+---
 
+##  How to Run the Project
+
+### 1. Setup environment
 ```bash
-cp .env.example .env  # edit values; never commit .env
+cp .env.example .env
+# Edit .env with correct credentials
+```
 
+### 2. Build and start services
+```bash
 docker compose up -d --build
+```
+
+### 3. Check system health
+```bash
+docker compose ps
 bash scripts/healthcheck_stack.sh
+```
+
+### 4. Seed databases
+```bash
 bash scripts/seed_neo4j.sh
 bash scripts/seed_weaviate.sh
-
-# Demo curl
-curl -s -X POST http://localhost:8000/rag/answer \
-  -H 'Content-Type: application/json' \
-  -d '{"question": "How do I prep ginger for stir-fry?"}' | jq .
-
-# Open the web UI at http://localhost:3000/rag
 ```
 
-## Submission
+### 5. Test RAG endpoint
+```bash
+curl -X POST http://localhost:8000/rag/answer \
+  -H "Content-Type: application/json" \
+  -d '{"question": "How do I prep ginger for stir-fry?"}'
+```
 
-Team submission (one per team): the team submitter pastes the team
-fork's main-branch URL into TalentLMS → Module 10 → Integration Task.
+### 6. Open frontend
+```
+http://localhost:3000/rag
+```
 
-Per-Team-Member participation confirmation (one per Team Member): each
-Team Member separately submits a TalentLMS checkbox confirming
-participation, naming their assigned role, and naming the files they
-authored.
+---
+
+##  System Architecture
+
+User → Next.js Frontend → FastAPI Backend →  
+Neo4j (Graph Retrieval) + Weaviate (Vector Search) →  
+RAG Pipeline → LLM Generator → Answer with Citations
+
+---
+
+##  Services
+
+| Service   | Description |
+|----------|-------------|
+| api       | FastAPI backend (RAG system) |
+| web       | Next.js frontend UI |
+| neo4j     | Graph database |
+| weaviate  | Vector database |
+
+---
+
+##  Demo Flow
+
+1. Start stack using Docker Compose
+2. Seed Neo4j + Weaviate
+3. Open frontend at `/rag`
+4. Ask a question (e.g. recipe query)
+5. Receive grounded answer with citations
+
+---
+
+##  Submission Requirements
+
+- One team submission via TalentLMS
+- Must include:
+  - `docker compose ps` showing healthy services
+  - Seed script outputs
+  - Working `/rag/answer` curl response
+  - Screenshot of frontend RAG page
+  - Completed TEAM.md
+  - Contribution summary per member
+
+---
+
+##  Collaboration Rules
+
+- Backend owns API contract (Pydantic + OpenAPI)
+- Frontend consumes API strictly via types
+- Infra owns Docker Compose and orchestration
+- Any contract change must be communicated in team channel before merge
 
 ---
 
 ## License
 
-This repository is provided for educational use only. See
-[LICENSE](LICENSE) for terms. You may clone and modify this repository
-for personal learning and practice, and reference code you wrote here
-in your professional portfolio. Redistribution outside this course is
-not permitted.
+This repository is for educational purposes only.
+Unauthorized distribution outside the course is not permitted.

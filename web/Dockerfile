@@ -5,8 +5,18 @@
 # included in lockfiles generated on macOS / Debian hosts.
 FROM node:20-slim AS builder
 WORKDIR /app
+
+# Configure npm with aggressive retry and timeout settings
+RUN npm config set fetch-timeout=180000 && \
+    npm config set fetch-retry-mintimeout=30000 && \
+    npm config set fetch-retry-maxtimeout=180000 && \
+    npm config set fetch-retries=10 && \
+    npm config set audit false && \
+    npm cache clean --force
+
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --verbose
+
 COPY . .
 ARG NEXT_PUBLIC_API_URL=http://localhost:8000
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
@@ -20,8 +30,18 @@ RUN npm run build
 FROM node:20-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+
+# Configure npm with aggressive retry and timeout settings
+RUN npm config set fetch-timeout=180000 && \
+    npm config set fetch-retry-mintimeout=30000 && \
+    npm config set fetch-retry-maxtimeout=180000 && \
+    npm config set fetch-retries=10 && \
+    npm config set audit false && \
+    npm cache clean --force
+
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev --verbose
+
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/next.config.js ./next.config.js

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { RAGResponse } from "../lib/types";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL = "/api";
 
 export default function RagPage() {
   const [question, setQuestion] = useState("");
