@@ -11,10 +11,15 @@ CRITICAL FIX:
 - The model struggles with complex multi-instruction prompts.
 - Solution: Use a clearer, more directive prompt that flan-t5 follows better.
 """
+import logging
 import re
+import signal
+import time
 from typing import Tuple
 
 # Simplified prompt that flan-t5-base can follow reliably
+logger = logging.getLogger(__name__)
+
 PROMPT_TEMPLATE = """\
 answer the following question using only the provided sources. cite sources using [1], [2], etc.
 
@@ -30,10 +35,6 @@ CITATION_PATTERN = re.compile(r"\[(\d+)\]")
 
 
 def assemble_prompt(question: str, chunks: list[dict]) -> Tuple[str, dict[int, dict]]:
-    """Number the retrieved chunks 1..k and substitute into the prompt template.
-
-    Returns (prompt_str, {citation_index: chunk_dict}). Index starts at 1.
-    """
     numbered: dict[int, dict] = {}
     lines = []
     for i, chunk in enumerate(chunks, start=1):
@@ -44,10 +45,6 @@ def assemble_prompt(question: str, chunks: list[dict]) -> Tuple[str, dict[int, d
 
 
 def extract_citations(answer: str, numbered: dict[int, dict]) -> list[dict]:
-    """Pull [N]-style markers from `answer` and resolve to retrieved chunks.
-
-    Returns one {"chunk_id", "score"} dict per unique resolvable index.
-    """
     cited: list[dict] = []
     seen: set[int] = set()
     for match in CITATION_PATTERN.finditer(answer):
@@ -59,16 +56,14 @@ def extract_citations(answer: str, numbered: dict[int, dict]) -> list[dict]:
     return cited
 
 
+def _timeout_handler(signum, frame):
+    raise TimeoutError("generator timed out")
+
+
 def compose_rag(question: str, embedder, weaviate_client, generator, k: int = 4) -> dict:
-    """Run the four-stage RAG pipeline.
+    start = time.time()
+    logger.info({"event": "rag_start", "question": question, "k": k})
 
-    Encodes the question via the externally-loaded sentence-transformers
-    embedder and queries Weaviate with `with_near_vector`. The Weaviate
-    class is `vectorizer=none`, so `with_near_text` would fail at
-    runtime with `KeyError: 'data'`.
-
-    Returns {"answer": str, "citations": list[dict], "confidence": float}.
-    """
     vector = embedder.encode(question).tolist()
     raw_query = (
         weaviate_client.query.get("Chunk", ["chunk_id", "text"])
@@ -86,6 +81,7 @@ def compose_rag(question: str, embedder, weaviate_client, generator, k: int = 4)
         for c in raw_query["data"]["Get"]["Chunk"]
     ]
     if not retrieved:
+        logger.info({"event": "rag_empty", "duration_sec": round(time.time() - start, 2)})
         return {"answer": SENTINEL, "citations": [], "confidence": 0.0}
 
     prompt, numbered = assemble_prompt(question, retrieved)
@@ -115,6 +111,27 @@ def compose_rag(question: str, embedder, weaviate_client, generator, k: int = 4)
             "citations": [],
             "confidence": 0.0
         }
+
+    signal.signal(signal.SIGALRM, _timeout_handler)
+    signal.alarm(30)
+    try:
+        raw = generator(prompt, max_new_tokens=256, do_sample=False)[0]["generated_text"]
+    finally:
+        signal.alarm(0)
+
+    citations = extract_citations(raw, numbered)
+    if not citations:
+        logger.info({"event": "rag_no_citations", "duration_sec": round(time.time() - start, 2)})
+        return {"answer": SENTINEL, "citations": [], "confidence": 0.0}
+
     confidence = sum(c["score"] for c in citations) / len(citations)
     confidence = max(0.0, min(1.0, confidence))
+
+    logger.info({
+        "event": "rag_done",
+        "confidence": round(confidence, 3),
+        "citations_count": len(citations),
+        "duration_sec": round(time.time() - start, 2)
+    })
+
     return {"answer": raw, "citations": citations, "confidence": confidence}

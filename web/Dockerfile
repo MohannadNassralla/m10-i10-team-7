@@ -17,9 +17,17 @@ RUN npm config set fetch-timeout=180000 && \
 COPY package*.json ./
 RUN npm ci --verbose
 
+# Optimize layer caching: copy lockfiles first so npm ci is cached
+COPY package*.json ./
+RUN npm ci
+
+# Copy the remaining client source files
 COPY . .
+
+# Set up the required host-facing Next.js API build argument
 ARG NEXT_PUBLIC_API_URL=http://localhost:8000
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+
 # Raise Node heap so the Next.js build's parallel worker does not OOM on
 # Docker Desktop's default 2GB VM allocation (Jest worker exits with
 # `WorkerError: encountered 1 child process exceptions`).
@@ -41,9 +49,14 @@ RUN npm config set fetch-timeout=180000 && \
 
 COPY package*.json ./
 RUN npm ci --omit=dev --verbose
+COPY package*.json ./
+
+RUN npm install --omit=dev --legacy-peer-deps
 
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/next.config.js ./next.config.js
+
 EXPOSE 3000
+
 CMD ["npm", "start"]

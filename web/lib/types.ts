@@ -1,34 +1,27 @@
-// TypeScript interfaces — must mirror api/models.py exactly.
-// snake_case field names preserved (chunk_id, not chunkId).
 
 export interface Entity {
-  text: string;
-  label: string;
-  start: number;
-  end: number;
+  name: string;
+  type: string;
 }
 
 export interface ExtractResponse {
+  success: boolean;
   entities: Entity[];
 }
 
-export interface KGResponse {
-  cypher: string;
-  rows: Record<string, unknown>[];
-  count: number;
-}
-
-export interface UnsupportedQueryDetail {
-  reason: "unsupported_question";
-  supported_patterns: string[];
+export interface KgQueryResult {
+  nodes: Array<{ id: string; label: string; properties: Record<string, any> }>;
+  edges: Array<{ source: string; target: string; type: string }>;
 }
 
 export interface Citation {
-  chunk_id: number;
-  score: number;
+  id: string;
+  text: string;
+  source: string;
+  score?: number;
 }
 
-export interface RAGResponse {
+export interface RagResponse {
   answer: string;
   citations: Citation[];
   confidence: number;

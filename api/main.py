@@ -10,6 +10,7 @@ Discipline gates the autograder enforces:
   within 2 seconds; failure → 503.
 - `/healthz` does NOT touch Neo4j or Weaviate.
 """
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -38,9 +39,23 @@ from .rag import compose_rag
 from .w9b_mapper.errors import UnsupportedQueryError
 from .w9b_mapper.shapes import SUPPORTED_PATTERNS
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # DNS env reads — تأكد كل الـ service names موجودة قبل ما نبدأ
+    required_env = ["NEO4J_URI", "NEO4J_USER", "NEO4J_PASSWORD", "WEAVIATE_URL"]
+    missing = [k for k in required_env if not os.environ.get(k)]
+    if missing:
+        raise RuntimeError(f"Missing required env vars: {missing}")
+
+    logger.info({
+        "event": "startup",
+        "NEO4J_URI": os.environ["NEO4J_URI"],
+        "WEAVIATE_URL": os.environ["WEAVIATE_URL"],
+    })
+
     app.state.neo4j_driver = GraphDatabase.driver(
         os.environ["NEO4J_URI"],
         auth=(os.environ["NEO4J_USER"], os.environ["NEO4J_PASSWORD"]),
@@ -48,9 +63,6 @@ async def lifespan(app: FastAPI):
     app.state.weaviate_client = weaviate.Client(os.environ["WEAVIATE_URL"])
     app.state.nlp = spacy.load("en_core_web_sm")
     app.state.generator = load_generator()
-    # Same sentence-transformers model the seed used at ingest. The
-    # Weaviate class is `vectorizer=none`, so /rag/answer encodes the
-    # query externally and queries via `with_near_vector`.
     app.state.embedder = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
     yield
     app.state.neo4j_driver.close()
@@ -68,7 +80,13 @@ app.add_middleware(
 
 @app.post("/extract", response_model=ExtractResponse)
 def extract(req: ExtractRequest, nlp=Depends(get_nlp)) -> ExtractResponse:
-    return ExtractResponse(entities=extract_entities(req.text, nlp))
+    try:
+        return ExtractResponse(entities=extract_entities(req.text, nlp))
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"reason": "extract_failed", "error": exc.__class__.__name__}
+        )
 
 
 @app.post("/kg/query", response_model=KGResponse)
@@ -94,8 +112,14 @@ def rag_answer(
     generator=Depends(get_generator),
     embedder=Depends(get_embedder),
 ) -> RAGResponse:
-    result = compose_rag(req.question, embedder, weaviate_client, generator, k=req.k)
-    return RAGResponse(**result)
+    try:
+        result = compose_rag(req.question, embedder, weaviate_client, generator, k=req.k)
+        return RAGResponse(**result)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"reason": "rag_failed", "error": exc.__class__.__name__}
+        )
 
 
 @app.get("/healthz", response_model=HealthResponse)
